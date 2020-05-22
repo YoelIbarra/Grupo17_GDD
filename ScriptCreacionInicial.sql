@@ -1,4 +1,4 @@
-if object_id('THE_ETERNALS') is not null
+if object_id('DATASCIENTIST') is not null
 DROP SCHEMA DATASCIENTISTS;
 
 GO
