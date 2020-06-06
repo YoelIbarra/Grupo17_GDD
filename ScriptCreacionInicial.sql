@@ -2,6 +2,25 @@ USE [GD1C2020];
 
 GO
 
+CREATE PROCEDURE DatascientistsMigracionPasajes
+AS
+INSERT [DATASCIENTISTS].CIUDADES (CIUDAD_NOMBRE) (
+	SELECT DISTINCT RUTA_AEREA_CIU_ORIG
+	FROM gd_esquema.Maestra
+	WHERE RUTA_AEREA_CIU_ORIG IS NOT NULL
+	UNION 
+	SELECT DISTINCT RUTA_AEREA_CIU_DEST
+	FROM gd_esquema.Maestra
+	WHERE RUTA_AEREA_CIU_DEST IS NOT NULL
+);
+PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Ciudades insertadas correctamente';
+GO
+
+CREATE PROCEDURE DatascientistsMigracionEstadias
+AS
+PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Estadias insertadas correctamente';
+GO
+
 if object_id('DATASCIENTISTS.ITEMS_PASAJE') is not null
 	DROP TABLE [DATASCIENTISTS].ITEMS_PASAJE;
 
@@ -248,17 +267,19 @@ CREATE TABLE [DATASCIENTISTS].[ITEMS_ESTADIA]
 );
 
 PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Modelo de datos creado correctamente';
+GO
 
-INSERT [DATASCIENTISTS].CIUDADES (CIUDAD_NOMBRE) (
-	SELECT DISTINCT RUTA_AEREA_CIU_ORIG
-	FROM gd_esquema.Maestra
-	WHERE RUTA_AEREA_CIU_ORIG IS NOT NULL
-	UNION 
-	SELECT DISTINCT RUTA_AEREA_CIU_DEST
-	FROM gd_esquema.Maestra
-	WHERE RUTA_AEREA_CIU_DEST IS NOT NULL
-);
+dbo.DatascientistsMigracionPasajes;
+GO
 
-PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Ciudades insertadas correctamente';
+dbo.DatascientistsMigracionEstadias;
+GO
 
+if object_id('dbo.DatascientistsMigracionPasajes') is not null
+	DROP PROCEDURE dbo.DatascientistsMigracionPasajes;
+GO
+
+if object_id('dbo.DatascientistsMigracionEstadias') is not null
+	DROP PROCEDURE dbo.DatascientistsMigracionEstadias;
+GO
 --Sigue..
