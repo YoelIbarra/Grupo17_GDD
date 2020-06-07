@@ -33,11 +33,54 @@ CREATE PROCEDURE MigracionInsertarHabitacion (@HOTEL decimal(18,0), @PISO int, @
 AS
 BEGIN
 	INSERT INTO [DATASCIENTISTS].HABITACION (HABIT_HOTEL_ID, HABIT_PISO, HABIT_NUMERO, HABIT_FRENTE, HABIT_PRECIO, HABIT_COSTO, HABIT_TIPO_COD)
-	VALUES (@HOTEL, @PISO, @NUMERO, @FRENTE, @PRECIO, @COSTO,, @TIPO)
-END
+	VALUES (@HOTEL, @PISO, @NUMERO, @FRENTE, @PRECIO, @COSTO, @TIPO);
 	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+ 'nueva habitacion';
+END
+	
 GO
 
+
+
+CREATE PROCEDURE DatascientistsMigracionHabitacionesHoteles
+AS
+BEGIN
+	OPEN MigracionHotelHabitacion;
+	DECLARE @CALLE nvarchar(50), @CALLENRO decimal(18,0), @ESTRELLAS tinyint, @PISO int, @HABITACIONNRO decimal(18,0);
+	DECLARE @FRENTE nvarchar(50), @COSTO decimal(18,2), @PRECIO decimal(18,2), @TIPO decimal(18,0);
+	DECLARE @ID decimal(18,0);
+	SET @ID = 0;
+
+	FETCH next FROM MigracionHotelHabitacion INTO @CALLE , @CALLENRO, @ESTRELLAS, @PISO, @HABITACIONNRO, @FRENTE, @COSTO, @PRECIO, @TIPO;
+	
+	WHILE(@@FETCH_STATUS=0)
+	BEGIN
+		IF(@CALLE IN (SELECT HOTEL_CALLE FROM [DATASCIENTISTS].HOTEL)) 
+		BEGIN
+			IF(@CALLENRO IN (SELECT HOTEL_NUMERO_CALLE FROM [DATASCIENTISTS].HOTEL WHERE HOTEL_CALLE = @CALLE))
+			BEGIN
+				EXEC dbo.MigracionInsertarHabitacion @ID , @PISO, @HABITACIONNRO, @FRENTE, @COSTO, @PRECIO, @TIPO
+			END
+			ELSE
+			BEGIN
+				EXEC dbo.MigracionInsertarHotel @CALLE, @CALLENRO, @ESTRELLAS
+				SELECT top 1 @ID = HOTEL_ID FROM [DATASCIENTISTS].HOTEL WHERE HOTEL_CALLE = @CALLE AND HOTEL_NUMERO_CALLE = @CALLENRO
+				EXEC dbo.MigracionInsertarHabitacion @ID , @PISO, @HABITACIONNRO, @FRENTE, @COSTO, @PRECIO, @TIPO
+			END
+		END
+		ELSE
+		BEGIN
+			EXEC dbo.MigracionInsertarHotel @CALLE, @CALLENRO, @ESTRELLAS
+			SELECT top 1 @ID = HOTEL_ID FROM [DATASCIENTISTS].HOTEL WHERE HOTEL_CALLE = @CALLE AND HOTEL_NUMERO_CALLE = @CALLENRO
+			EXEC dbo.MigracionInsertarHabitacion @ID , @PISO, @HABITACIONNRO, @FRENTE, @COSTO, @PRECIO, @TIPO
+		END
+		FETCH NEXT FROM MigracionHotelHabitacion INTO @CALLE, @CALLENRO, @ESTRELLAS, @PISO, @HABITACIONNRO, @FRENTE, @COSTO, @PRECIO, @TIPO;
+	END
+
+	CLOSE MigracionHotelHabitacion;
+	DEALLOCATE MigracionHotelHabitacion;
+END
+
+GO
 CREATE PROCEDURE DatascientistsMigracionTipoHabitaciones
 AS
 BEGIN
@@ -164,7 +207,7 @@ CREATE TABLE [DATASCIENTISTS].[HOTEL]
 
 CREATE TABLE [DATASCIENTISTS].[TIPO_HABITACION]
 (
-	[TIPO_HABITACION_CODIGO] decimal(18,0) IDENTITY(1,1) NOT NULL,
+	[TIPO_HABITACION_CODIGO] decimal(18,0) NOT NULL,
 	[TIPO_HABITACION_DESCRIPCION] nvarchar(50),
 	CONSTRAINT PK_TIPO_HABITACION PRIMARY KEY(TIPO_HABITACION_CODIGO)
 );
@@ -325,11 +368,29 @@ GO
 dbo.DatascientistsMigracionEstadias;
 GO
 
+EXEC dbo.DatascientistsMigracionTipoHabitaciones
+GO
+
+EXEC dbo.DatascientistsMigracionHabitacionesHoteles
+GO
 if object_id('dbo.DatascientistsMigracionPasajes') is not null
 	DROP PROCEDURE dbo.DatascientistsMigracionPasajes;
 GO
 
 if object_id('dbo.DatascientistsMigracionEstadias') is not null
 	DROP PROCEDURE dbo.DatascientistsMigracionEstadias;
+GO
+
+if object_id('dbo.DatascientistsMigracionTipoHabitaciones') is not null
+	DROP PROCEDURE dbo.DatascientistsMigracionTipoHabitaciones;
+GO
+if object_id('dbo.MigracionInsertarHotel') is not null
+	DROP PROCEDURE dbo.MigracionInsertarHotel;
+GO
+if object_id('dbo.MigracionInsertarHabitacion') is not null
+	DROP PROCEDURE dbo.MigracionInsertarHabitacion;
+GO
+if object_id('dbo.DatascientistsMigracionHabitacionesHoteles') is not null
+	DROP PROCEDURE dbo.DatascientistsMigracionHabitacionesHoteles;
 GO
 --Sigue..
