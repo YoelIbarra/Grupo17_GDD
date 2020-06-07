@@ -1,14 +1,7 @@
 USE [GD1C2020];
 
 GO
-/*
-	Lo que voy a hacer cuando use el siguiente cursor es ver si existe el hotel (como van a estar en un principio vacias las 
-	tablas el primer hotel que venga lo va a agregar)
-	Guardar el ID (identity) con el que asignamos al hotel, entonces cuando luego agregue habitacion le paso ese ID_HOTEL
-	Cambiar esa variable que voy a usar como @HOTEL solo cuando cambie de hotel, por esta razon ordeno el hotel para que siempre
-	traiga todas las habitaciones que tenga de este, cabe destacar nuevamente que esta estrategia la estoy usando solo porque es una
-	migracion
-*/
+
 DECLARE MigracionHotelHabitacion Cursor
 FOR
 	SELECT HOTEL_CALLE, HOTEL_NRO_CALLE, HOTEL_CANTIDAD_ESTRELLAS, HABITACION_PISO, HABITACION_NUMERO,HABITACION_FRENTE, HABITACION_COSTO, HABITACION_PRECIO, TIPO_HABITACION_CODIGO
