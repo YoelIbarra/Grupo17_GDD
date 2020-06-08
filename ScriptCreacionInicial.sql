@@ -13,6 +13,9 @@ if object_id('DATASCIENTISTS.ObtenerCodigoCiudad') is not null
 GO
 
 --STORED PROCEDURES
+if object_id('DATASCIENTISTS.MigracionInsertarRutasAereas') is not null
+	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarRutasAereas;
+GO
 if object_id('DATASCIENTISTS.MigracionInsertarCiudades') is not null
 	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarCiudades;
 GO
@@ -398,9 +401,22 @@ AS
 	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Ciudades insertadas correctamente';
 GO
 
+CREATE PROCEDURE DATASCIENTISTS.MigracionInsertarRutasAereas
+AS
+	INSERT [DATASCIENTISTS].RUTA_AEREA (RUTA_AEREA_CODIGO, RUTA_AEREA_CIU_ORIG, RUTA_AEREA_CIU_DEST) (
+		SELECT RUTA_AEREA_CODIGO, 
+			DATASCIENTISTS.ObtenerCodigoCiudad(RUTA_AEREA_CIU_ORIG), DATASCIENTISTS.ObtenerCodigoCiudad(RUTA_AEREA_CIU_DEST)
+		FROM gd_esquema.Maestra
+		WHERE PASAJE_CODIGO is not null
+		GROUP BY RUTA_AEREA_CODIGO, RUTA_AEREA_CIU_ORIG, RUTA_AEREA_CIU_DEST
+	);
+	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Rutas aereas insertadas correctamente';
+GO
+
 CREATE PROCEDURE DatascientistsMigracionPasajes
 AS
 	EXEC DATASCIENTISTS.MigracionInsertarCiudades;
+	EXEC DATASCIENTISTS.MigracionInsertarRutasAereas;
 GO
 
 CREATE PROCEDURE DatascientistsMigracionEstadias
@@ -409,11 +425,10 @@ PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Estadias insertadas correctamente';
 GO
 
 
-
-dbo.DatascientistsMigracionPasajes;
+EXEC dbo.DatascientistsMigracionPasajes;
 GO
 
-dbo.DatascientistsMigracionEstadias;
+EXEC dbo.DatascientistsMigracionEstadias;
 GO
 
 EXEC DATASCIENTISTS.MigracionTipoHabitaciones
