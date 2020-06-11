@@ -8,13 +8,37 @@ if object_id('MigracionHotelHabitacion') is not null
 GO
 
 --FUNCIONES
+if object_id('DATASCIENTISTS.ObtenerUltimoIdButaca') is not null
+	DROP FUNCTION DATASCIENTISTS.ObtenerUltimoIdButaca;
+GO
 if object_id('DATASCIENTISTS.ObtenerCodigoCiudad') is not null
 	DROP FUNCTION DATASCIENTISTS.ObtenerCodigoCiudad;
 GO
+if object_id('DATASCIENTISTS.ObtenerIdEmpresa') is not null
+	DROP FUNCTION DATASCIENTISTS.ObtenerIdEmpresa;
+GO
 
 --STORED PROCEDURES
-if object_id('DATASCIENTISTS.MigracionInsertarButacas') is not null
-	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarButacas;
+if object_id('DATASCIENTISTS.MigracionPasajes') is not null
+	DROP PROCEDURE DATASCIENTISTS.MigracionPasajes;
+GO
+if object_id('DATASCIENTISTS.MigracionEstadias') is not null
+	DROP PROCEDURE DATASCIENTISTS.MigracionEstadias;
+GO
+if object_id('DATASCIENTISTS.MigracionCompras') is not null
+	DROP PROCEDURE DATASCIENTISTS.MigracionCompras;
+GO
+if object_id('DATASCIENTISTS.MigracionEmpresas') is not null
+	DROP PROCEDURE DATASCIENTISTS.MigracionEmpresas;
+GO
+if object_id('DATASCIENTISTS.MigracionInsertarPasajes') is not null
+	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarPasajes;
+GO
+if object_id('DATASCIENTISTS.InsertarPasaje') is not null
+	DROP PROCEDURE DATASCIENTISTS.InsertarPasaje;
+GO
+if object_id('DATASCIENTISTS.BuscarEInsertarButaca') is not null
+	DROP PROCEDURE DATASCIENTISTS.BuscarEInsertarButaca;
 GO
 if object_id('DATASCIENTISTS.MigracionInsertarAviones') is not null
 	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarAviones;
@@ -115,7 +139,10 @@ CREATE TABLE [DATASCIENTISTS].[COMPRA]
 (
 	[COMPRA_NUMERO] decimal(18,0) NOT NULL,
 	[COMPRA_FECHA] datetime2(3),
-	CONSTRAINT PK_COMPRA PRIMARY KEY(COMPRA_NUMERO)
+	[COMPRA_EMPRESA] decimal(18,0) NOT NULL,
+	CONSTRAINT PK_COMPRA PRIMARY KEY(COMPRA_NUMERO),
+	CONSTRAINT FK_EMPRESA_COMPRA FOREIGN KEY(COMPRA_EMPRESA)
+		REFERENCES [DATASCIENTISTS].EMPRESA(EMPRESA_ID)
 );
 
 CREATE TABLE [DATASCIENTISTS].[AVION]
@@ -221,7 +248,9 @@ CREATE TABLE [DATASCIENTISTS].BUTACA
 	BUTACA_AVION nvarchar(50) NOT NULL,
 	CONSTRAINT PK_BUTACA PRIMARY KEY(BUTACA_ID),
 	CONSTRAINT FK_AVION_BUTACA FOREIGN KEY(BUTACA_AVION)
-		REFERENCES [DATASCIENTISTS].AVION(AVION_IDENTIFICADOR)
+		REFERENCES [DATASCIENTISTS].AVION(AVION_IDENTIFICADOR),
+	/*Un avión no puede tener más de una butaca del mismo tipo y con el mismo número. Sería información redundante*/
+	CONSTRAINT UC_BUTACA UNIQUE (BUTACA_NUMERO, BUTACA_TIPO, BUTACA_AVION)
 )
 
 CREATE TABLE [DATASCIENTISTS].PASAJE
@@ -301,6 +330,7 @@ CREATE TABLE [DATASCIENTISTS].[ITEMS_ESTADIA]
 
 PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Modelo de datos creado correctamente';
 GO
+
 DECLARE MigracionHotelHabitacion Cursor
 FOR
 	SELECT HOTEL_CALLE, HOTEL_NRO_CALLE, HOTEL_CANTIDAD_ESTRELLAS, HABITACION_PISO, HABITACION_NUMERO,HABITACION_FRENTE, HABITACION_COSTO, HABITACION_PRECIO, TIPO_HABITACION_CODIGO
@@ -330,8 +360,6 @@ BEGIN
 END
 	
 GO
-
-
 
 CREATE PROCEDURE [DATASCIENTISTS].MigracionHabitacionesHoteles
 AS
@@ -396,6 +424,22 @@ BEGIN
 END
 GO
 
+CREATE FUNCTION DATASCIENTISTS.ObtenerUltimoIdButaca()
+RETURNS DECIMAL(18,0)
+BEGIN
+	RETURN ISNULL((SELECT MAX(BUTACA_ID) FROM DATASCIENTISTS.BUTACA),0);
+END
+GO
+
+CREATE FUNCTION DATASCIENTISTS.ObtenerIdEmpresa
+(@razonSocial NVARCHAR(255))
+RETURNS DECIMAL(18,0)
+BEGIN
+	RETURN ISNULL((SELECT EMPRESA_ID FROM DATASCIENTISTS.EMPRESA
+		WHERE EMPRESA_RAZON_SOCIAL=@razonSocial),0);
+END
+GO
+
 CREATE PROCEDURE DATASCIENTISTS.MigracionInsertarCiudades
 AS
 	INSERT [DATASCIENTISTS].CIUDADES (CIUDAD_NOMBRE) (
@@ -446,37 +490,126 @@ AS
 	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Aviones insertados correctamente';
 GO
 
-CREATE PROCEDURE DATASCIENTISTS.MigracionInsertarButacas
+CREATE PROCEDURE DATASCIENTISTS.BuscarEInsertarButaca
+@butacaNumero INT, 
+@butacaTipo  NVARCHAR(50), 
+@butacaAvion NVARCHAR(50),
+@butacaId DECIMAL(18,0) OUTPUT
 AS
-	INSERT [DATASCIENTISTS].BUTACA 
-	(BUTACA_NUMERO, BUTACA_TIPO, BUTACA_AVION) (
-		SELECT BUTACA_NUMERO, BUTACA_TIPO, AVION_IDENTIFICADOR
-		FROM gd_esquema.Maestra
-		WHERE BUTACA_NUMERO IS NOT NULL AND AVION_IDENTIFICADOR IS NOT NULL
-		GROUP BY BUTACA_NUMERO, BUTACA_TIPO, AVION_IDENTIFICADOR
-	);
-	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Butacas insertadas correctamente';
+	--Si existe la butaca en cuestión, obtener el id de la butaca existente y retornarlo
+	SET @butacaId = ISNULL((
+			SELECT BUTACA_ID FROM DATASCIENTISTS.BUTACA 
+			WHERE BUTACA_AVION=@butacaAvion AND BUTACA_TIPO=@butacaTipo AND BUTACA_NUMERO=@butacaNumero),0);
+	IF @butacaId = 0
+		BEGIN
+			--Si no existe la butaca, insertarla
+			INSERT [DATASCIENTISTS].BUTACA 
+			(BUTACA_NUMERO, BUTACA_TIPO, BUTACA_AVION) VALUES (
+				@butacaNumero,
+				@butacaTipo,
+				@butacaAvion 
+			);
+			--Y como se insertó recién, obtener el último id con DATASCIENTISTS.ObtenerUltimoIdButaca
+			SET @butacaId = DATASCIENTISTS.ObtenerUltimoIdButaca();
+		END
+	
+	RETURN @butacaId;
 GO
 
-CREATE PROCEDURE DatascientistsMigracionPasajes
+
+CREATE PROCEDURE DATASCIENTISTS.InsertarPasaje
+@pasajeCodigo DECIMAL(18,0),
+@pasajeCosto  DECIMAL(18,0),
+@pasajePrecio DECIMAL(18,0),
+@pasajeVuelo  DECIMAL(18,0),
+@pasajeButaca DECIMAL(18,0),
+@pasajeCompra DECIMAL(18,0)
+AS
+	INSERT [DATASCIENTISTS].PASAJE 
+	(PASAJE_CODIGO, PASAJE_COSTO, PASAJE_PRECIO, PASAJE_VUELO, PASAJE_BUTACA, PASAJE_COMPRA) VALUES (
+		@pasajeCodigo,
+		@pasajeCosto ,
+		@pasajePrecio,
+		@pasajeVuelo ,
+		@pasajeButaca,
+		@pasajeCompra	
+	);
+GO
+
+CREATE PROCEDURE DATASCIENTISTS.MigracionInsertarPasajes
+AS
+	DECLARE @butacaId DECIMAL(18,0), @pasajeCodigo DECIMAL(18,0), @pasajeCosto DECIMAL(18,2), @pasajePrecio DECIMAL(18,2), 
+		@codigoVuelo DECIMAL(18,0), @numeroButaca DECIMAL(18,0), @tipoButaca NVARCHAR(255), @avionId NVARCHAR(50), @numeroCompra DECIMAL(18,0);
+	DECLARE pasajes CURSOR
+	FOR (SELECT PASAJE_CODIGO, PASAJE_COSTO, PASAJE_PRECIO, 
+			VUELO_CODIGO, BUTACA_NUMERO, BUTACA_TIPO, AVION_IDENTIFICADOR, COMPRA_NUMERO
+		FROM gd_esquema.Maestra
+		WHERE PASAJE_CODIGO is not null
+		GROUP BY PASAJE_CODIGO, PASAJE_COSTO, PASAJE_PRECIO, 
+			VUELO_CODIGO, BUTACA_NUMERO, BUTACA_TIPO, AVION_IDENTIFICADOR, COMPRA_NUMERO);
+	OPEN pasajes;
+	FETCH FROM pasajes INTO @pasajeCodigo, @pasajeCosto, @pasajePrecio, @codigoVuelo, @numeroButaca, @tipoButaca, @avionId, @numeroCompra;
+	WHILE @@FETCH_STATUS = 0
+	BEGIN
+		--Llama a DATASCIENTISTS.BuscarEInsertarButaca con el numero, tipo y el avión, y guarda el id devuelto
+		EXECUTE DATASCIENTISTS.BuscarEInsertarButaca @numeroButaca, @tipoButaca, @avionId, @butacaId OUTPUT;
+		
+		--Llama a DATASCIENTISTS.InsertarPasaje para finalmente guardar el pasaje con toda la información necesaria
+		EXECUTE DATASCIENTISTS.InsertarPasaje @pasajeCodigo, @pasajeCosto, @pasajePrecio, @codigoVuelo, @butacaId, @numeroCompra;
+		
+		FETCH FROM pasajes INTO @pasajeCodigo, @pasajeCosto, @pasajePrecio, @codigoVuelo, @numeroButaca, @tipoButaca, @avionId, @numeroCompra;
+	END
+	CLOSE pasajes;
+	DEALLOCATE pasajes;
+	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Pasajes y butacas insertados correctamente';
+GO
+
+CREATE PROCEDURE DATASCIENTISTS.MigracionEmpresas
+AS
+	INSERT [DATASCIENTISTS].EMPRESA (EMPRESA_RAZON_SOCIAL) (
+		SELECT DISTINCT EMPRESA_RAZON_SOCIAL
+		FROM gd_esquema.Maestra
+		WHERE EMPRESA_RAZON_SOCIAL IS NOT NULL
+	);
+	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Empresas insertadas correctamente';
+GO
+
+CREATE PROCEDURE DATASCIENTISTS.MigracionCompras
+AS
+	INSERT [DATASCIENTISTS].COMPRA (COMPRA_NUMERO, COMPRA_FECHA, COMPRA_EMPRESA) (
+		SELECT COMPRA_NUMERO, COMPRA_FECHA,
+			DATASCIENTISTS.ObtenerIdEmpresa(EMPRESA_RAZON_SOCIAL)
+		FROM gd_esquema.Maestra
+		WHERE COMPRA_NUMERO is not null
+		GROUP BY COMPRA_NUMERO, COMPRA_FECHA, EMPRESA_RAZON_SOCIAL
+	);
+	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Compras insertadas correctamente';
+GO
+
+CREATE PROCEDURE DATASCIENTISTS.MigracionPasajes
 AS
 	EXEC DATASCIENTISTS.MigracionInsertarCiudades;
 	EXEC DATASCIENTISTS.MigracionInsertarRutasAereas;
 	EXEC DATASCIENTISTS.MigracionInsertarVuelos;
 	EXEC DATASCIENTISTS.MigracionInsertarAviones;
-	EXEC DATASCIENTISTS.MigracionInsertarButacas;
+	EXEC DATASCIENTISTS.MigracionInsertarPasajes;
 GO
 
-CREATE PROCEDURE DatascientistsMigracionEstadias
+CREATE PROCEDURE DATASCIENTISTS.MigracionEstadias
 AS
 PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Estadias insertadas correctamente';
 GO
 
-
-EXEC dbo.DatascientistsMigracionPasajes;
+EXEC DATASCIENTISTS.MigracionEmpresas
 GO
 
-EXEC dbo.DatascientistsMigracionEstadias;
+EXEC DATASCIENTISTS.MigracionCompras
+GO
+
+EXEC DATASCIENTISTS.MigracionPasajes;
+GO
+
+EXEC DATASCIENTISTS.MigracionEstadias;
 GO
 
 EXEC DATASCIENTISTS.MigracionTipoHabitaciones
@@ -484,13 +617,5 @@ GO
 
 EXEC DATASCIENTISTS.MigracionHabitacionesHoteles
 GO
-if object_id('dbo.DatascientistsMigracionPasajes') is not null
-	DROP PROCEDURE dbo.DatascientistsMigracionPasajes;
-GO
-
-if object_id('dbo.DatascientistsMigracionEstadias') is not null
-	DROP PROCEDURE dbo.DatascientistsMigracionEstadias;
-GO
-
 
 --Sigue..
