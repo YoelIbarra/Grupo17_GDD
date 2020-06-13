@@ -2,26 +2,13 @@
 USE [GD1C2020]; -- TODO BP: Eliminar
 
 -- TODO BP: COLOCARLO JUNTO A LOS DEMÁS DROPS --
--- FUNCIONES --
-if object_id('DATASCIENTISTS.ObtenerUltimoIdButaca') is not null
-	DROP FUNCTION DATASCIENTISTS.ObtenerUltimoIdButaca;
-GO
-
-if object_id('DATASCIENTISTS.ObtenerSucursal') is not null
-	DROP FUNCTION DATASCIENTISTS.ObtenerSucursal;
-GO
-
-if object_id('DATASCIENTISTS.ObtenerCliente') is not null
-	DROP FUNCTION DATASCIENTISTS.ObtenerCliente;
-GO
-
 -- PROCEDURE --
-if object_id('DATASCIENTISTS.MigracionInsertarClientes') is not null
-	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarClientes;
-GO
-
 if object_id('DATASCIENTISTS.MigracionInsertarSucursales') is not null
 	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarSucursales;
+GO
+
+if object_id('DATASCIENTISTS.InsertarCliente') is not null
+	DROP PROCEDURE DATASCIENTISTS.InsertarCliente;
 GO
 
 if object_id('DATASCIENTISTS.InsertarFactura') is not null
@@ -30,40 +17,6 @@ GO
 
 if object_id('DATASCIENTISTS.MigracionInsertarFacturasItems') is not null
 	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarFacturasItems;
-GO
-
-/* *** MIGRAR CLIENTES *** */
-CREATE PROCEDURE DATASCIENTISTS.MigracionInsertarClientes
-AS
-	INSERT [DATASCIENTISTS].CLIENTE
-		(CLIENTE_DNI,
-		 CLIENTE_NOMBRE,
-		 CLIENTE_APELLIDO,
-		 CLIENTE_FECHA_NAC,
-		 CLIENTE_MAIL,
-		 CLIENTE_TELEFONO)
-	(
-		SELECT [CLIENTE_DNI]
-			  ,[CLIENTE_NOMBRE]
-			  ,[CLIENTE_APELLIDO]
-			  ,[CLIENTE_FECHA_NAC]
-			  ,[CLIENTE_MAIL]
-			  ,[CLIENTE_TELEFONO]
-		  FROM [GD1C2020].[gd_esquema].[Maestra]
-		 WHERE [CLIENTE_APELLIDO] IS NOT NULL
-		   AND [CLIENTE_NOMBRE] IS NOT NULL
-		   AND [CLIENTE_DNI] IS NOT NULL
-		   AND [CLIENTE_FECHA_NAC] IS NOT NULL
-		   AND [CLIENTE_MAIL] IS NOT NULL
-		   AND [CLIENTE_TELEFONO] IS NOT NULL
-		 GROUP BY [CLIENTE_APELLIDO]
-				 ,[CLIENTE_NOMBRE]
-				 ,[CLIENTE_DNI]
-				 ,[CLIENTE_FECHA_NAC]
-				 ,[CLIENTE_MAIL]
-				 ,[CLIENTE_TELEFONO]
-	);
-	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Clientes insertados correctamente';
 GO
 
 /* *** MIGRAR SUCURSALES *** */
@@ -89,6 +42,42 @@ AS
 GO
 
 /* *** MIGRAR FACTURAS *** */
+CREATE PROCEDURE DATASCIENTISTS.InsertarCliente
+@clienteDNI DECIMAL(18, 0),
+@clienteNombre nvarchar(255),
+@clienteApellido nvarchar(255),
+@clienteFechaNac datetime,
+@clienteMail nvarchar(255),
+@clienteTel int,
+@clienteID DECIMAL(18,0) OUTPUT
+AS
+BEGIN
+	INSERT [DATASCIENTISTS].CLIENTE
+		(CLIENTE_DNI,
+		 CLIENTE_NOMBRE,
+		 CLIENTE_APELLIDO,
+		 CLIENTE_FECHA_NAC,
+		 CLIENTE_MAIL,
+		 CLIENTE_TELEFONO)
+	VALUES(
+		@clienteDNI,
+		@clienteNombre,
+		@clienteApellido,
+		@clienteFechaNac,
+		@clienteMail,
+		@clienteTel
+	);
+	
+	-- Retorna ClienteID  --
+	SET @clienteID = Scope_Identity();
+	
+	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Clientes insertados correctamente';
+	
+	RETURN @clienteID;
+END
+GO
+
+-- ------- --
 
 CREATE PROCEDURE DATASCIENTISTS.InsertarFactura
 @facturaNro   DECIMAL(18,0),
@@ -102,74 +91,60 @@ GO
 
 -- ------ --
 
-CREATE FUNCTION DATASCIENTISTS.ObtenerSucursal(@sucursalNum int)
-RETURNS DECIMAL(18,0)
-BEGIN
-	RETURN (SELECT SUCURSAL_ID
-	          FROM DATASCIENTISTS.SUCURSAL
-		     WHERE SUCURSAL_TELEFONO = @sucursalNum);
-END
-GO
-
--- ------ --
-
-CREATE FUNCTION DATASCIENTISTS.ObtenerCliente (@clienteDNI DECIMAL(18,0), @clienteNombre NVARCHAR(255), @clienteApellido NVARCHAR(255))
-RETURNS DECIMAL(18,0)
-BEGIN
-	RETURN (SELECT CLIENTE_ID
-	          FROM DATASCIENTISTS.CLIENTE
-		     WHERE CLIENTE_DNI = @clienteDNI
-			   AND CLIENTE_NOMBRE = @clienteNombre
-			   AND CLIENTE_APELLIDO = @clienteApellido
-		    );
-END
-GO
-
--- ------ --
-
 CREATE PROCEDURE DATASCIENTISTS.MigracionInsertarFacturasItems
 AS
 
-	DECLARE @facturaNro DECIMAL(18,0), @facturaFecha DATETIME, @pasajeCod DECIMAL(18,0), @estadiaCod DECIMAL(18,0), @sucursalID DECIMAL(18,0), @clienteID DECIMAL(18,0);
+	DECLARE @facturaNro DECIMAL(18,0), @facturaFecha DATETIME, @pasajeCod DECIMAL(18,0), @estadiaCod DECIMAL(18,0), @sucursalID DECIMAL(18,0);
+	DECLARE @clienteID DECIMAL(18,0), @clienteDNI DECIMAL(18, 0), @clienteNombre nvarchar(255), @clienteApellido nvarchar(255), @clienteFechaNac datetime, @clienteMail nvarchar(255), @clienteTel int;
 
 	DECLARE C_Fact_Item_Pasaje CURSOR FOR (
 		SELECT FACTURA_NRO,
 		       FACTURA_FECHA,
 		       PASAJE_CODIGO,
-		       DATASCIENTISTS.ObtenerCliente(CLIENTE_DNI, CLIENTE_NOMBRE, CLIENTE_APELLIDO) AS CLIENTE_ID,
-			   DATASCIENTISTS.ObtenerSucursal(SUCURSAL_TELEFONO) AS SUCURSAL_ID
-		 FROM [GD1C2020].[gd_esquema].[Maestra]
-		  WHERE FACTURA_FECHA IS NOT NULL
-			AND FACTURA_NRO IS NOT NULL
-			AND PASAJE_CODIGO IS NOT NULL
-			);
+			   -- Cliente --
+		       CLIENTE_DNI, CLIENTE_NOMBRE, CLIENTE_APELLIDO, CLIENTE_FECHA_NAC, CLIENTE_MAIL, CLIENTE_TELEFONO,
+			   -- Sucursal --
+			   SUCURSAL_ID SUCURSAL_ID
+		 FROM [gd_esquema].[Maestra] maestra
+		INNER JOIN DATASCIENTISTS.SUCURSAL sucursal ON sucursal.SUCURSAL_TELEFONO = maestra.SUCURSAL_TELEFONO
+		WHERE FACTURA_FECHA IS NOT NULL
+		  AND FACTURA_NRO IS NOT NULL
+		  AND PASAJE_CODIGO IS NOT NULL
+		);
 			
 	DECLARE C_Fact_Item_Estadia CURSOR FOR (
 		SELECT FACTURA_NRO,
 		       FACTURA_FECHA,
 		       ESTADIA_CODIGO,
-			   DATASCIENTISTS.ObtenerCliente(CLIENTE_DNI, CLIENTE_NOMBRE, CLIENTE_APELLIDO) AS CLIENTE_ID,
-			   DATASCIENTISTS.ObtenerSucursal(SUCURSAL_DIR) AS SUCURSAL_ID
-		 FROM [GD1C2020].[gd_esquema].[Maestra]
+			   -- Cliente --
+		       CLIENTE_DNI, CLIENTE_NOMBRE, CLIENTE_APELLIDO, CLIENTE_FECHA_NAC, CLIENTE_MAIL, CLIENTE_TELEFONO,
+			   -- Sucursal --
+			   SUCURSAL_ID SUCURSAL_ID
+		 FROM [GD1C2020].[gd_esquema].[Maestra] maestra
+		INNER JOIN DATASCIENTISTS.SUCURSAL sucursal ON sucursal.SUCURSAL_TELEFONO = maestra.SUCURSAL_TELEFONO
 		  WHERE FACTURA_FECHA IS NOT NULL
 			AND FACTURA_NRO IS NOT NULL
 			AND ESTADIA_CODIGO IS NOT NULL
-			);			
+		);			
 	
 	/* RECORRE facturas con item pasaje */
 	OPEN C_Fact_Item_Pasaje;
-	FETCH FROM C_Fact_Item_Pasaje INTO @facturaNro, @facturaFecha, @pasajeCod, @clienteID, @sucursalID;
+	FETCH FROM C_Fact_Item_Pasaje INTO @facturaNro, @facturaFecha, @pasajeCod, @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @sucursalID;
 	WHILE @@FETCH_STATUS = 0
 	BEGIN
-		-- INSERTAR factura
+	
+		-- INSERTAR Cliente --
+		EXECUTE DATASCIENTISTS.InsertarCliente @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @clienteID OUTPUT;
+
+		-- INSERTAR Factura --
 		EXECUTE DATASCIENTISTS.InsertarFactura @facturaNro, @facturaFecha, @clienteID, @sucursalID;
 		
-		-- INSERTAR item pasaje
+		-- INSERTAR Item pasaje --
 		INSERT INTO DATASCIENTISTS.ITEMS_PASAJE(ITEM_PAS_COD_PASAJE, ITEM_PAS_FACT_NUMERO)
 		     VALUES (@pasajeCod, @facturaNro);
 		
 		--FETCH
-		FETCH FROM C_Fact_Item_Pasaje INTO @facturaNro, @facturaFecha, @pasajeCod, @clienteID, @sucursalID;
+		FETCH FROM C_Fact_Item_Pasaje INTO @facturaNro, @facturaFecha, @pasajeCod, @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @sucursalID;
 
 	END
 	CLOSE C_Fact_Item_Pasaje;
@@ -179,9 +154,13 @@ AS
 	
 	/* Recorre facutas con item estadia */
 	OPEN C_Fact_Item_Estadia;
-	FETCH FROM C_Fact_Item_Estadia INTO @facturaNro, @facturaFecha, @estadiaCod, @clienteID, @sucursalID;
+	FETCH FROM C_Fact_Item_Estadia INTO @facturaNro, @facturaFecha, @estadiaCod, @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @sucursalID;
 	WHILE @@FETCH_STATUS = 0
 	BEGIN
+	
+		-- INSERTAR Cliente --
+		EXECUTE DATASCIENTISTS.InsertarCliente @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @clienteID OUTPUT;
+	
 		-- INSERTAR factura
 		EXECUTE DATASCIENTISTS.InsertarFactura @facturaNro, @facturaFecha, @clienteID, @sucursalID;
 		
@@ -190,7 +169,7 @@ AS
 		     VALUES (@estadiaCod, @facturaNro);
 
 		--FETCH
-		FETCH FROM C_Fact_Item_Estadia INTO @facturaNro, @facturaFecha, @estadiaCod, @clienteID, @sucursalID;
+		FETCH FROM C_Fact_Item_Estadia INTO @facturaNro, @facturaFecha, @estadiaCod, @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @sucursalID;
 
 	END
 	CLOSE C_Fact_Item_Estadia;
@@ -201,13 +180,8 @@ GO
 
 /* *** INVOCACIÓN *** */
 -- TODO BP: Colocarlo en la invocación general --
-/*
-EXEC DATASCIENTISTS.MigracionInsertarClientes
-GO
-
 EXEC DATASCIENTISTS.MigracionInsertarSucursales
 GO
 
 EXEC DATASCIENTISTS.MigracionInsertarFacturasItems
 GO
-*/
