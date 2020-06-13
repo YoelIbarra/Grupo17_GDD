@@ -1,1 +1,1 @@
-sqlcmd -S localhost\SQLEXPRESS  -i ScriptCreacionInicial.sql -o creacionInicial_output.txt
+sqlcmd -S LAPTOP-4L2P2MKK\SQLSERVER2012 -U gd -P gd2020 -i ScriptCreacionInicial.sql -o creacionInicial_output.txt
