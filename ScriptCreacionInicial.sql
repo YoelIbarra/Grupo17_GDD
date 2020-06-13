@@ -6,6 +6,9 @@ GO
 if object_id('MigracionHotelHabitacion') is not null
 	DEALLOCATE MigracionHotelHabitacion;
 GO
+if object_id('MigracionEstadiaFactura') is not null
+	DEALLOCATE MigracionEstadiaFactura;
+GO
 
 --FUNCIONES
 if object_id('DATASCIENTISTS.ObtenerUltimoIdButaca') is not null
@@ -17,6 +20,10 @@ GO
 if object_id('DATASCIENTISTS.ObtenerIdEmpresa') is not null
 	DROP FUNCTION DATASCIENTISTS.ObtenerIdEmpresa;
 GO
+if object_id('DATASCIENTISTS.ObtenerIDHabitacion') is not null
+	DROP FUNCTION DATASCIENTISTS.ObtenerIDHabitacion;
+GO
+
 
 --STORED PROCEDURES
 if object_id('DATASCIENTISTS.MigracionPasajes') is not null
@@ -64,6 +71,32 @@ GO
 if object_id('DATASCIENTISTS.MigracionHabitacionesHoteles') is not null
 	DROP PROCEDURE DATASCIENTISTS.MigracionHabitacionesHoteles;
 GO
+if object_id('DATASCIENTISTS.InsertarEstadias') is not null
+	DROP PROCEDURE DATASCIENTISTS.InsertarEstadias;
+GO
+if object_id('DATASCIENTISTS.InsertarItemsEstadias') is not null
+	DROP PROCEDURE DATASCIENTISTS.InsertarItemsEstadias;
+GO
+if object_id('DATASCIENTISTS.MigracionEstadias') is not null
+	DROP PROCEDURE DATASCIENTISTS.MigracionEstadias;
+GO
+
+if object_id('DATASCIENTISTS.MigracionInsertarSucursales') is not null
+	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarSucursales;
+GO
+
+if object_id('DATASCIENTISTS.InsertarCliente') is not null
+	DROP PROCEDURE DATASCIENTISTS.InsertarCliente;
+GO
+
+if object_id('DATASCIENTISTS.InsertarFactura') is not null
+	DROP PROCEDURE DATASCIENTISTS.InsertarFactura;
+GO
+
+if object_id('DATASCIENTISTS.MigracionInsertarFacturasItems') is not null
+	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarFacturasItems;
+GO
+
  --TABLAS
 if object_id('DATASCIENTISTS.ITEMS_PASAJE') is not null
 	DROP TABLE [DATASCIENTISTS].ITEMS_PASAJE;
@@ -331,6 +364,7 @@ CREATE TABLE [DATASCIENTISTS].[ITEMS_ESTADIA]
 PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Modelo de datos creado correctamente';
 GO
 
+--CURSORES
 DECLARE MigracionHotelHabitacion Cursor
 FOR
 	SELECT HOTEL_CALLE, HOTEL_NRO_CALLE, HOTEL_CANTIDAD_ESTRELLAS, HABITACION_PISO, HABITACION_NUMERO,HABITACION_FRENTE, HABITACION_COSTO, HABITACION_PRECIO, TIPO_HABITACION_CODIGO
@@ -340,7 +374,37 @@ FOR
 	ORDER BY 1, 2, 4, 5
 
 GO
+--DADO A QUE ACTUALMENTE TODAS LAS ESTADIAS TIENEN FACTURA ASOCIADA HAGO ESTE SOLO CURSOR CON 1 SELECT
+DECLARE MigracionEstadiaFactura Cursor
+For
+	SELECT COMPRA_NUMERO, ESTADIA_CANTIDAD_NOCHES, ESTADIA_CODIGO, ESTADIA_FECHA_INI, HOTEL_CALLE, HOTEL_NRO_CALLE, HABITACION_NUMERO, HABITACION_PISO, HABITACION_FRENTE, FACTURA_NRO 
+	FROM gd_esquema.Maestra
+	WHERE ESTADIA_CODIGO IS NOT NULL 
+	AND FACTURA_NRO IS NOT NULL
+	ORDER BY ESTADIA_CODIGO
 
+GO
+--FUNCIONES
+
+CREATE FUNCTION DATASCIENTISTS.ObtenerIDHabitacion (@CALLE nvarchar(50),@NROCALLE decimal(18,0), @HABITACIONNRO decimal(18,0)
+,@PISO int,@FRENTE nvarchar(50))
+RETURNS DECIMAL(18,0)
+BEGIN
+	DECLARE @HOTEL decimal(18,0), @HABITACION decimal(18,0);
+
+	SELECT top 1 @HOTEL = HOTEL_ID FROM DATASCIENTISTS.HOTEL
+	WHERE @CALLE = HOTEL_CALLE AND @NROCALLE = HOTEL_NUMERO_CALLE;
+
+	SELECT top 1 @HABITACION = HABITACION_ID FROM DATASCIENTISTS.HABITACION
+	WHERE HABIT_HOTEL_ID = @HOTEL AND HABIT_NUMERO = @HABITACIONNRO AND HABIT_PISO = @PISO AND HABIT_FRENTE = @FRENTE;
+
+	RETURN @HABITACION;
+END
+
+GO
+
+
+--STORED PROCEDURES
 CREATE PROCEDURE [DATASCIENTISTS].MigracionInsertarHotel (@CALLE nvarchar(50),@NROCALLE decimal(18,0), @ESTRELLAS tinyint)
 AS
 BEGIN
@@ -595,10 +659,210 @@ AS
 	EXEC DATASCIENTISTS.MigracionInsertarPasajes;
 GO
 
+CREATE PROCEDURE DATASCIENTISTS.InsertarEstadias 
+(@ESTADIA decimal(18,0), @FECHA datetime2(3), @NOCHES decimal(18,0), @COMPRA decimal (18,0), @HABITACION decimal(18,0))
+AS
+	INSERT DATASCIENTISTS.ESTADIA
+	(ESTADIA_CODIGO,ESTADIA_FECHA_INI,ESTADIA_CANTIDAD_NOCHES,ESTADIA_COMPRA,ESTADIA_HABITACION)
+	VALUES(@ESTADIA,@FECHA,@NOCHES,@COMPRA,@HABITACION)
+
+GO
+
+CREATE PROCEDURE DATASCIENTISTS.InsertarItemsEstadias (@ESTADIA decimal(18,0), @FACTURA decimal(18,0))
+AS
+	INSERT DATASCIENTISTS.ITEMS_ESTADIA
+	(ITEM_EST_COD_ESTADIA,ITEM_EST_FACT_NUMERO)
+	VALUES(@ESTADIA,@FACTURA)
+
+GO
+
 CREATE PROCEDURE DATASCIENTISTS.MigracionEstadias
 AS
+
+	OPEN MigracionEstadiaFactura;
+
+	DECLARE @COMPRA decimal(18,0), @NOCHES decimal(18,0), @ESTADIA decimal(18,0), @FECHA_INI datetime2(3), @CALLE nvarchar(50); 
+	DECLARE @NRO_CALLE decimal(18,0), @HNUMERO decimal (18,0), @HPISO int, @HFRENTE nvarchar(50), @FACTURA decimal(18,0), @HABITACIONID decimal(18,0);
+
+	FETCH FROM MigracionEstadiaFactura INTO @COMPRA, @NOCHES, @ESTADIA, @FECHA_INI, @CALLE, @NRO_CALLE, @HNUMERO, @HPISO, @HFRENTE, @FACTURA;
+
+	WHILE(@@FETCH_STATUS=0)
+	BEGIN
+		SET @HABITACIONID = DATASCIENTISTS.ObtenerIDHabitacion(@CALLE,@NRO_CALLE,@HNUMERO,@HPISO,@HFRENTE);
+		
+		EXECUTE DATASCIENTISTS.InsertarEstadias @ESTADIA, @FECHA_INI, @NOCHES, @COMPRA, @HABITACIONID;
+		--EXECUTE DATASCIENTISTS.InsertarItemsEstadias @ESTADIA, @FACTURA;
+
+		FETCH FROM MigracionEstadiaFactura INTO @COMPRA, @NOCHES, @ESTADIA, @FECHA_INI, @CALLE, @NRO_CALLE, @HNUMERO, @HPISO, @HFRENTE, @FACTURA
+
+	END
+	CLOSE MigracionEstadiaFactura;
+	DEALLOCATE MigracionEstadiaFactura;
+
+
 PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Estadias insertadas correctamente';
 GO
+
+/* *** MIGRAR SUCURSALES *** */
+CREATE PROCEDURE DATASCIENTISTS.MigracionInsertarSucursales
+AS
+	INSERT [DATASCIENTISTS].SUCURSAL
+		(SUCURSAL_DIR,
+		 SUCURSAL_MAIL,
+		 SUCURSAL_TELEFONO)
+	(
+		SELECT [SUCURSAL_DIR]
+			  ,[SUCURSAL_MAIL]
+			  ,[SUCURSAL_TELEFONO]
+		  FROM [GD1C2020].[gd_esquema].[Maestra]
+		 WHERE [SUCURSAL_DIR] IS NOT NULL
+		   AND [SUCURSAL_MAIL] IS NOT NULL
+		   AND [SUCURSAL_TELEFONO] IS NOT NULL
+		 GROUP BY [SUCURSAL_DIR]
+		         ,[SUCURSAL_MAIL]
+				 ,[SUCURSAL_TELEFONO]
+	);
+	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Sucursales insertadas correctamente';
+GO
+
+/* *** MIGRAR FACTURAS *** */
+CREATE PROCEDURE DATASCIENTISTS.InsertarCliente
+@clienteDNI DECIMAL(18, 0),
+@clienteNombre nvarchar(255),
+@clienteApellido nvarchar(255),
+@clienteFechaNac datetime,
+@clienteMail nvarchar(255),
+@clienteTel int,
+@clienteID DECIMAL(18,0) OUTPUT
+AS
+BEGIN
+	INSERT [DATASCIENTISTS].CLIENTE
+		(CLIENTE_DNI,
+		 CLIENTE_NOMBRE,
+		 CLIENTE_APELLIDO,
+		 CLIENTE_FECHA_NAC,
+		 CLIENTE_MAIL,
+		 CLIENTE_TELEFONO)
+	VALUES(
+		@clienteDNI,
+		@clienteNombre,
+		@clienteApellido,
+		@clienteFechaNac,
+		@clienteMail,
+		@clienteTel
+	);
+	
+	-- Retorna ClienteID  --
+	SET @clienteID = Scope_Identity();
+	
+	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Clientes insertados correctamente';
+	
+	RETURN @clienteID;
+END
+GO
+
+-- ------- --
+
+CREATE PROCEDURE DATASCIENTISTS.InsertarFactura
+@facturaNro   DECIMAL(18,0),
+@facturaFecha DATETIME,
+@clienteID    DECIMAL(18,0),
+@sucursalID   DECIMAL(18,0)
+AS
+	INSERT INTO DATASCIENTISTS.FACTURA(FACT_NUMERO, FACT_FECHA, FACT_CLIENTE, FACT_SUCURSAL)
+		 VALUES (@facturaNro, @facturaFecha, @clienteID, @sucursalID);
+GO
+
+-- ------ --
+
+CREATE PROCEDURE DATASCIENTISTS.MigracionInsertarFacturasItems
+AS
+
+	DECLARE @facturaNro DECIMAL(18,0), @facturaFecha DATETIME, @pasajeCod DECIMAL(18,0), @estadiaCod DECIMAL(18,0), @sucursalID DECIMAL(18,0);
+	DECLARE @clienteID DECIMAL(18,0), @clienteDNI DECIMAL(18, 0), @clienteNombre nvarchar(255), @clienteApellido nvarchar(255), @clienteFechaNac datetime, @clienteMail nvarchar(255), @clienteTel int;
+
+	DECLARE C_Fact_Item_Pasaje CURSOR FOR (
+		SELECT FACTURA_NRO,
+		       FACTURA_FECHA,
+		       PASAJE_CODIGO,
+			   -- Cliente --
+		       CLIENTE_DNI, CLIENTE_NOMBRE, CLIENTE_APELLIDO, CLIENTE_FECHA_NAC, CLIENTE_MAIL, CLIENTE_TELEFONO,
+			   -- Sucursal --
+			   SUCURSAL_ID SUCURSAL_ID
+		 FROM [gd_esquema].[Maestra] maestra
+		INNER JOIN DATASCIENTISTS.SUCURSAL sucursal ON sucursal.SUCURSAL_TELEFONO = maestra.SUCURSAL_TELEFONO
+		WHERE FACTURA_FECHA IS NOT NULL
+		  AND FACTURA_NRO IS NOT NULL
+		  AND PASAJE_CODIGO IS NOT NULL
+		);
+			
+	DECLARE C_Fact_Item_Estadia CURSOR FOR (
+		SELECT FACTURA_NRO,
+		       FACTURA_FECHA,
+		       ESTADIA_CODIGO,
+			   -- Cliente --
+		       CLIENTE_DNI, CLIENTE_NOMBRE, CLIENTE_APELLIDO, CLIENTE_FECHA_NAC, CLIENTE_MAIL, CLIENTE_TELEFONO,
+			   -- Sucursal --
+			   SUCURSAL_ID SUCURSAL_ID
+		 FROM [GD1C2020].[gd_esquema].[Maestra] maestra
+		INNER JOIN DATASCIENTISTS.SUCURSAL sucursal ON sucursal.SUCURSAL_TELEFONO = maestra.SUCURSAL_TELEFONO
+		  WHERE FACTURA_FECHA IS NOT NULL
+			AND FACTURA_NRO IS NOT NULL
+			AND ESTADIA_CODIGO IS NOT NULL
+		);			
+	
+	/* RECORRE facturas con item pasaje */
+	OPEN C_Fact_Item_Pasaje;
+	FETCH FROM C_Fact_Item_Pasaje INTO @facturaNro, @facturaFecha, @pasajeCod, @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @sucursalID;
+	WHILE @@FETCH_STATUS = 0
+	BEGIN
+	
+		-- INSERTAR Cliente --
+		EXECUTE DATASCIENTISTS.InsertarCliente @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @clienteID OUTPUT;
+
+		-- INSERTAR Factura --
+		EXECUTE DATASCIENTISTS.InsertarFactura @facturaNro, @facturaFecha, @clienteID, @sucursalID;
+		
+		-- INSERTAR Item pasaje --
+		INSERT INTO DATASCIENTISTS.ITEMS_PASAJE(ITEM_PAS_COD_PASAJE, ITEM_PAS_FACT_NUMERO)
+		     VALUES (@pasajeCod, @facturaNro);
+		
+		--FETCH
+		FETCH FROM C_Fact_Item_Pasaje INTO @facturaNro, @facturaFecha, @pasajeCod, @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @sucursalID;
+
+	END
+	CLOSE C_Fact_Item_Pasaje;
+	DEALLOCATE C_Fact_Item_Pasaje;
+	
+	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Facturas con items pasaje insertados correctamente';
+	
+	/* Recorre facutas con item estadia */
+	OPEN C_Fact_Item_Estadia;
+	FETCH FROM C_Fact_Item_Estadia INTO @facturaNro, @facturaFecha, @estadiaCod, @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @sucursalID;
+	WHILE @@FETCH_STATUS = 0
+	BEGIN
+	
+		-- INSERTAR Cliente --
+		EXECUTE DATASCIENTISTS.InsertarCliente @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @clienteID OUTPUT;
+	
+		-- INSERTAR factura
+		EXECUTE DATASCIENTISTS.InsertarFactura @facturaNro, @facturaFecha, @clienteID, @sucursalID;
+		
+		-- INSERTAR item estadia
+		INSERT INTO DATASCIENTISTS.ITEMS_ESTADIA(ITEM_EST_COD_ESTADIA, ITEM_EST_FACT_NUMERO)
+		     VALUES (@estadiaCod, @facturaNro);
+
+		--FETCH
+		FETCH FROM C_Fact_Item_Estadia INTO @facturaNro, @facturaFecha, @estadiaCod, @clienteDNI, @clienteNombre, @clienteApellido, @clienteFechaNac, @clienteMail, @clienteTel, @sucursalID;
+
+	END
+	CLOSE C_Fact_Item_Estadia;
+	DEALLOCATE C_Fact_Item_Estadia;	
+	
+	PRINT CAST(SYSDATETIME() AS VARCHAR(25))+' Facturas con items estadía insertados correctamente';
+GO
+
+/* *** MIGRACIÓN *** */
 
 EXEC DATASCIENTISTS.MigracionEmpresas
 GO
@@ -609,13 +873,19 @@ GO
 EXEC DATASCIENTISTS.MigracionPasajes;
 GO
 
-EXEC DATASCIENTISTS.MigracionEstadias;
-GO
-
 EXEC DATASCIENTISTS.MigracionTipoHabitaciones
 GO
 
 EXEC DATASCIENTISTS.MigracionHabitacionesHoteles
+GO
+
+EXEC DATASCIENTISTS.MigracionEstadias
+GO
+
+EXEC DATASCIENTISTS.MigracionInsertarSucursales
+GO
+
+EXEC DATASCIENTISTS.MigracionInsertarFacturasItems
 GO
 
 --Sigue..
