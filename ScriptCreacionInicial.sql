@@ -80,19 +80,15 @@ GO
 if object_id('DATASCIENTISTS.MigracionEstadias') is not null
 	DROP PROCEDURE DATASCIENTISTS.MigracionEstadias;
 GO
-
 if object_id('DATASCIENTISTS.MigracionInsertarSucursales') is not null
 	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarSucursales;
 GO
-
 if object_id('DATASCIENTISTS.InsertarCliente') is not null
 	DROP PROCEDURE DATASCIENTISTS.InsertarCliente;
 GO
-
 if object_id('DATASCIENTISTS.InsertarFactura') is not null
 	DROP PROCEDURE DATASCIENTISTS.InsertarFactura;
 GO
-
 if object_id('DATASCIENTISTS.MigracionInsertarFacturasItems') is not null
 	DROP PROCEDURE DATASCIENTISTS.MigracionInsertarFacturasItems;
 GO
@@ -402,7 +398,6 @@ BEGIN
 END
 
 GO
-
 
 --STORED PROCEDURES
 CREATE PROCEDURE [DATASCIENTISTS].MigracionInsertarHotel (@CALLE nvarchar(50),@NROCALLE decimal(18,0), @ESTRELLAS tinyint)
