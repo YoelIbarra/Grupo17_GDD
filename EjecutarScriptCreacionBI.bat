@@ -1,0 +1,1 @@
+sqlcmd -S localhost\SQLEXPRESS  -i ScriptCreacionBI.sql -o creacionBI_output.txt
