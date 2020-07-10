@@ -410,7 +410,7 @@ END
 
 GO
 
-CREATE PROCEDURE [DATASCIENTISTS].MigracionInsertarHabitacion (@HOTEL decimal(18,0), @PISO int, @NUMERO decimal (18,0), @FRENTE nvarchar(50), @PRECIO decimal(18,2), @COSTO decimal(18,2), @TIPO decimal(18,0))
+CREATE PROCEDURE [DATASCIENTISTS].MigracionInsertarHabitacion (@HOTEL decimal(18,0), @PISO int, @NUMERO decimal (18,0), @FRENTE nvarchar(50), @COSTO decimal(18,2), @PRECIO decimal(18,2), @TIPO decimal(18,0))
 AS
 BEGIN
 	INSERT INTO [DATASCIENTISTS].HABITACION (HABIT_HOTEL_ID, HABIT_PISO, HABIT_NUMERO, HABIT_FRENTE, HABIT_PRECIO, HABIT_COSTO, HABIT_TIPO_COD)
